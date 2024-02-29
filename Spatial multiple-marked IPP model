@@ -1,0 +1,108 @@
+rm(list=ls())
+
+#setwd("C:\\Users\\user\\OneDrive - Lancaster University\\My computer\\My Documents\\PhD\\Typhoid\\March 2024\\Modelling")
+
+#load the data required for the analysis
+load("casedata.point.RData") #includes locations of cases, their age, gender,
+#spatial covariates, and date of sample collection
+
+load("df.pop.case") #a list of age and gender appropriate offsets
+#at the locations of the cases
+#that align with your data
+#e.g. 3 age groups and 2 genders, = list of 6
+
+load("covariates.grid.RData") #includes spatial covariates on the grid
+
+load("df.pop.grid.RData") #a list of age and gender appropriate offsets at the grid
+#that align with your data
+#e.g. 3 age groups and 2 genders, = list of 6
+
+#==================================================================
+#create levels for the data
+age.levels <- levels(casedata.point$age)
+gender.levels <- levels(casedata.point$gender)
+month.year.levels <- levels(casedata.point$month.year)
+season.levels <- levels(casedata.point$season)
+
+data.subset.fun <- function(casedata.point, names.cov){
+  
+  #names.cov = your vector of spatial covariates
+  
+  h <- 0
+  df.case <- list()
+  for (j in 1:length(age.levels)) {
+    for(k in 1:length(gender.levels)){
+      h <- h+1
+      df.case[[h]] <- casedata.point[casedata.point$age == age.levels[j]&
+                            casedata.point$gender == gender.levels[k], names.cov] } }
+  return(df.case) }
+
+#subset the data to get your covariate data at each age-gender combination
+df.case <- data.subset.fun(casedata.point2, c("distance", "elevation", "wash"))
+
+#to verify that the subsetting above was successful
+table(casedata.point$age, casedata.point$gender)
+
+
+#=======================================================
+##model prediction
+#likelihood function for fitting the spatial model
+
+llik.spatial <- function(par) {
+  
+  #define constants
+  p <- ncol(covariates.grid) #no of spatial covariates
+  # time.n <- 1 #1 for linear trend of time
+  age.n <- nlevels(casedata.point$age)
+  gender.n <- nlevels(casedata.point$gender)
+  delta <- 100 #area of grid cell
+  t.n <-  41# THIS SHUOLD BE THE TOTAL NUMBER OF TIME POINTS IN THE DATA
+  
+  #initialize estimates for model
+  beta         <- par[1:p]
+  age.coef     <- par[(p+1) : (p+age.n) ]
+  gender.coef  <- par[(p+age.n+ 1) : (p+age.n+gender.n)]
+  ll.total     <- rep(0, age.n*gender.n) 
+  
+  #objective function
+  h <- 0
+  
+  for (j in 1:age.n) {
+    for (k in 1:gender.n) {
+      h <- h + 1
+      log.intens <- 0
+      intens.grid <- 0
+      #  for(i in 1:t.n) {
+      log.intens <- sum(
+        age.coef[j] + gender.coef[k] + 
+          as.numeric( as.matrix(df.case[[h]] ) %*% beta) + 
+          log(df.pop.case[[h]]/100*100 ) )
+      
+      log.intens.grid <-   
+        age.coef[j] + gender.coef[k] + 
+        as.numeric( as.matrix(covariates.grid) %*% beta ) +
+        log(df.pop.grid[[h]] /100*100 )
+      
+      intens.grid <- exp(log.intens.grid)
+      #  }
+      #the objective function
+      ll.total[h] <- log.intens - delta * sum(intens.grid)     }    }
+  
+  out <- sum(ll.total)
+  return( -out)  
+}
+
+#Fit the model without the gradient and hessian 
+start.spatial <- c(rep(0,8))
+names(start.spatial) <- c("distance", "elevation", "wash score", #spatial covariates
+                          "0-5", "6-17", "18+", "female", "male") 
+fit.spatial <- nlminb(start = start.spatial, objective = llik.spatial,
+                      control = list(trace=1) )
+fit.spatial$convergence
+par.spatial <- fit.spatial$par
+
+round(par.spatial, 5)
+round(fit.spatial$par, 5)
+
+save(fit.spatial, file="fit.spatial.RData")
+save(par.spatial, file="par.spatial.RData")
