@@ -3,9 +3,15 @@ rm(list=ls()) #remove everything in memory
 #----------------------------------------------------------
 #- Load required datasets
 load("casedata.point.RData")
+
 load("covariates.grid.RData")
-load("pop.grid.RData")
+
+load("df.pop.case")
+
+load("df.pop.grid.RData")
+
 load("grid.areaf.RData")
+
 load("grid.casef.RData")
 
 #==================================================================
@@ -36,7 +42,7 @@ llik.st <- function(par) {
   
   #define constants
   p <- ncol(covariates.grid) #no of spatial covariates
-  time.n <- nlevels(casedata.point$season)+1 #1 for linear trend of time
+  time.n <- nlevels(casedata.point$season)+1 #1 because we had 4 seasons, and also included a linear trend of time variable
   age.n <- nlevels(casedata.point$age)
   gender.n <- nlevels(casedata.point$gender)
   delta <- 100 #area of grid cell
@@ -53,7 +59,7 @@ llik.st <- function(par) {
   h <- 0
   
   #include monthly temperatures as a covariates
-  D.temporal    <- model.matrix(~ -1 + season + t.my , data = casedata.point)
+  D.temporal    <- model.matrix(~ -1 + season + t.my , data = casedata.point) #t.my is the time point variable i.e 1 to 41 months
   time.effect <- as.numeric(D.temporal %*% (time.coef))
 
   for (j in 1:age.n) {
@@ -70,7 +76,7 @@ llik.st <- function(par) {
         log.intens.grid <-   
           time.effect[i] + age.coef[j] + gender.coef[k] + 
           as.numeric( as.matrix(covariates.grid) %*% beta ) +
-          log(pop.grid/100*100)
+          log(df.pop.grid/100*100)
         
         intens.grid <- intens.grid+exp(log.intens.grid)
       }
